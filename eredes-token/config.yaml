@@ -1,5 +1,5 @@
 name: E-Redes Token Refresher
-version: "1.0.0"
+version: "1.0.1"
 slug: eredes_token_refresher
 init: false
 description: Renova automaticamente o cookie aat do Balcão Digital E-Redes
@@ -16,8 +16,8 @@ ports_description:
 hassio_api: true
 homeassistant_api: true
 options:
-  refresh_margin_min: 5
-  refresh_margin_max: 25
+  refresh_margin_min: 2
+  refresh_margin_max: 8
   ntfy_topic: "eredes-token-fn2026"
   ha_webhook_id: "update_eredes_token"
 schema:

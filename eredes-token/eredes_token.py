@@ -219,9 +219,20 @@ def seconds_until_next_refresh(token, margin_min, margin_max):
     return wait_s
 
 
-def do_refresh_cycle(driver, config):
-    """Run one refresh cycle. Returns True if ended in 'ok' state."""
+def do_refresh_cycle(driver, config, prev_token=None):
+    """Run one refresh cycle. Returns new token on success, None on error.
+
+    Sets a 'stale' attribute on the returned value via tuple to signal when
+    the SPA returned the same aat (i.e. Angular did not refresh).
+    """
     token, err = refresh_cookie(driver)
+
+    # Transient login_required: SPA may briefly show login overlay while
+    # Firebase is mid-refresh. Retry once after 30s before escalating.
+    if err == "login_required":
+        print("[refresh] login_required on first try; retrying in 30s...", flush=True)
+        time.sleep(30)
+        token, err = refresh_cookie(driver)
 
     if err == "login_required":
         publish_status("login_required", "Firebase session expired")
@@ -247,7 +258,11 @@ def do_refresh_cycle(driver, config):
             err,
             priority="high",
         )
-        return False
+        return None
+
+    stale = (prev_token is not None and token == prev_token)
+    if stale:
+        print("[refresh] aat unchanged since last cycle (Angular did not refresh yet)", flush=True)
 
     if not publish_token_to_ha(token):
         publish_status("error", "sensor update failed")
@@ -255,8 +270,8 @@ def do_refresh_cycle(driver, config):
     if not fire_webhook(config["ha_webhook_id"]):
         publish_status("error", "webhook fire failed")
         return None
-    publish_status("ok", "refreshed")
-    return token
+    publish_status("ok", "stale" if stale else "refreshed")
+    return (token, stale)
 
 
 def main():
@@ -270,28 +285,39 @@ def main():
 
     print("[main] Startup refresh...", flush=True)
     last_token = None
+    last_result = None
     try:
-        last_token = do_refresh_cycle(driver, config)
+        last_result = do_refresh_cycle(driver, config)
     except Exception as e:
         print(f"[main] Startup refresh exception: {e}", flush=True)
         traceback.print_exc()
+    if last_result:
+        last_token, _ = last_result
 
-    margin_min = config.get("refresh_margin_min", 5)
-    margin_max = config.get("refresh_margin_max", 25)
+    margin_min = config.get("refresh_margin_min", 2)
+    margin_max = config.get("refresh_margin_max", 8)
 
     while True:
-        if last_token:
-            wait_s = seconds_until_next_refresh(last_token, margin_min, margin_max)
+        if last_result:
+            _, stale = last_result
+            if stale:
+                wait_s = 60  # Angular didn't refresh; try again soon
+                print(f"[main] Stale aat — retry in {wait_s}s", flush=True)
+            else:
+                wait_s = seconds_until_next_refresh(last_token, margin_min, margin_max)
         else:
             wait_s = 300  # sem token, tenta de novo em 5min
             print(f"[main] No token yet, retry in {wait_s}s", flush=True)
         time.sleep(wait_s)
 
         try:
-            last_token = do_refresh_cycle(driver, config)
+            last_result = do_refresh_cycle(driver, config, prev_token=last_token)
+            if last_result:
+                last_token, _ = last_result
         except Exception as e:
             print(f"[main] Cycle exception: {e}", flush=True)
             traceback.print_exc()
+            last_result = None
             last_token = None
             if driver is not None:
                 try:
