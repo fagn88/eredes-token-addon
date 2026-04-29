@@ -1,5 +1,9 @@
 # Changelog
 
+## DESCONTINUADO (2026-04-29)
+
+Addon parado e com `boot: manual`. reCAPTCHA do Google bloqueava sistematicamente o auto-login do Selenium/Chromium standard. Renovação de token agora 100% via extensão Chrome `HA Token Bridge` (login manual on-demand). Código mantido no repo caso seja útil reactivar com mitigations anti-bot (undetected-chromedriver, mouse moves, etc.).
+
 ## 1.2.2 (2026-04-26)
 
 - Fix selectors do input de email no auto-login: E-Redes usa `id=username`/`formcontrolname=username` (sem "email" em qualquer atributo), apesar do label ser "E-mail". Selectors antigos só procuravam "mail" e nunca encontravam o input. Agora prioriza `id=username`, `formcontrolname=username`, `name=username` (e mantém os "mail" como fallback genérico).
